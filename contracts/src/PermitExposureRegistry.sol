@@ -19,9 +19,14 @@ contract PermitExposureRegistry {
     uint16 public constant PQC_KEY_REGISTERED = 1 << 6;
     uint16 public constant PQC_ALG_MLDSA87 = 1 << 7;
     uint16 public constant PQC_POSSESSION_PROVEN = 1 << 8;
+    uint16 public constant EIP3009_SELECTOR_IN_CODE = 1 << 9; // transfer/receiveWithAuthorization (USDC-style)
+
+    /// Token bits (everything except the account's PQC bits 6-8).
+    uint16 public constant TOKEN_MASK = 0x023F;
+    uint16 public constant ACCOUNT_MASK = 0x01C0;
 
     uint16 public constant EXPOSURE_MASK =
-        EIP2612_SELECTOR_IN_CODE | DAI_PERMIT_SELECTOR_IN_CODE | DOMAIN_SEPARATOR_CALLABLE;
+        EIP2612_SELECTOR_IN_CODE | DAI_PERMIT_SELECTOR_IN_CODE | DOMAIN_SEPARATOR_CALLABLE | EIP3009_SELECTOR_IN_CODE;
 
     struct Check {
         address account;
@@ -41,7 +46,10 @@ contract PermitExposureRegistry {
     function scan(address token, address account) public view returns (uint16 flags) {
         if (token.code.length > 0) {
             flags |= HAS_CODE;
-            if (_codeHasPush4(token, 0xd505accf)) flags |= EIP2612_SELECTOR_IN_CODE;
+            if (_codeHasPush4(token, 0xd505accf) || _codeHasPush4(token, 0x9fd5a6cf)) flags |= EIP2612_SELECTOR_IN_CODE; // permit(…,v,r,s) / permit(…,bytes)
+            if (_codeHasPush4(token, 0xe3ee160e) || _codeHasPush4(token, 0xcf092995) || _codeHasPush4(token, 0xef55bec6)) {
+                flags |= EIP3009_SELECTOR_IN_CODE; // transferWithAuthorization (v,r,s / bytes), receiveWithAuthorization
+            }
             if (_codeHasPush4(token, 0x8fcbaf0c)) flags |= DAI_PERMIT_SELECTOR_IN_CODE;
             if (_returnsAtLeast(token, abi.encodeWithSignature("DOMAIN_SEPARATOR()"), 32)) {
                 flags |= DOMAIN_SEPARATOR_CALLABLE;
@@ -85,7 +93,9 @@ contract PermitExposureRegistry {
 
     // ------------------------------------------------------------------ internals
 
-    /// @dev Searches runtime code for PUSH4 <selector>, the way Solidity dispatchers embed selectors.
+    /// @dev Searches runtime code for PUSH4 <selector>, the way Solidity dispatchers embed selectors. Heuristic: it
+    ///      can false-positive on matching bytes inside push data or metadata, and misses dispatchers that do not
+    ///      use PUSH4 (e.g. some Vyper builds); DOMAIN_SEPARATOR() is the proxy-safe second signal.
     function _codeHasPush4(address target, bytes4 selector) private view returns (bool found) {
         uint256 needle = (uint256(0x63) << 32) | uint256(uint32(selector)); // 5 bytes: 0x63 ++ selector
         assembly {
@@ -94,6 +104,7 @@ contract PermitExposureRegistry {
             extcodecopy(target, ptr, 0, size)
             mstore(0x40, add(ptr, add(size, 32))) // reserve; trailing word is zero padding
             let end := add(ptr, size)
+            mstore(end, 0) // the 4 bytes read past the code are always zero
             for { let p := ptr } lt(p, end) { p := add(p, 1) } {
                 if eq(shr(216, mload(p)), needle) {
                     found := 1

@@ -10,6 +10,10 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: forge test -vv
         working-directory: contracts
+      - name: live testnet scan (fork)
+        run: forge test --match-path test/fork/LiveScan.t.sol --fork-url https://evm-testnet.qore.host -vv
+        working-directory: contracts
+        continue-on-error: true # depends on the public testnet RPC
   web:
     runs-on: ubuntu-latest
     steps:

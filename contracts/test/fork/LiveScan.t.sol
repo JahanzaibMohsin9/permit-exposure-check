@@ -14,5 +14,9 @@ contract LiveScanTest is Test {
         uint16 f = reg.scan(fUSD, address(this));
         console.log("fUSD flags:", f, "exposed:", reg.isExposed(f));
         assertFalse(reg.isExposed(f));
+        address demoPermit = 0x47bad2BD1B77d02a88B2751D6629cAaD55C0eF72;
+        uint16 d = reg.scan(demoPermit, address(this));
+        console.log("demo EIP-2612 token flags:", d, "exposed:", reg.isExposed(d));
+        assertTrue(reg.isExposed(d));
     }
 }

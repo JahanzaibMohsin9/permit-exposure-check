@@ -11,10 +11,20 @@ export const FLAGS = {
   PQC_KEY_REGISTERED: 1 << 6,
   PQC_ALG_MLDSA87: 1 << 7,
   PQC_POSSESSION_PROVEN: 1 << 8,
+  EIP3009_SELECTOR_IN_CODE: 1 << 9,
 } as const;
 
+export const TOKEN_MASK = 0x023f;
+
 export const EXPOSURE_MASK =
-  FLAGS.EIP2612_SELECTOR_IN_CODE | FLAGS.DAI_PERMIT_SELECTOR_IN_CODE | FLAGS.DOMAIN_SEPARATOR_CALLABLE;
+  FLAGS.EIP2612_SELECTOR_IN_CODE | FLAGS.DAI_PERMIT_SELECTOR_IN_CODE | FLAGS.DOMAIN_SEPARATOR_CALLABLE | FLAGS.EIP3009_SELECTOR_IN_CODE;
+
+/** PUSH4 <selector> at a byte-aligned position of the runtime code (hex string without 0x). */
+const hasPush4 = (hex: string, selector: string) => {
+  const needle = `63${selector}`;
+  for (let i = hex.indexOf(needle); i !== -1; i = hex.indexOf(needle, i + 1)) if (i % 2 === 0) return true;
+  return false;
+};
 
 export const has = (flags: number, f: number) => (flags & f) === f;
 export const isExposed = (flags: number) => (flags & EXPOSURE_MASK) !== 0;
@@ -46,9 +56,10 @@ export async function scanInBrowser(client: PublicClient, token: Address, accoun
   const code = (await client.getCode({ address: token })) ?? "0x";
   if (code !== "0x") {
     flags |= FLAGS.HAS_CODE;
-    const hex = code.toLowerCase();
-    if (hex.includes("63d505accf")) flags |= FLAGS.EIP2612_SELECTOR_IN_CODE;
-    if (hex.includes("638fcbaf0c")) flags |= FLAGS.DAI_PERMIT_SELECTOR_IN_CODE;
+    const hex = code.toLowerCase().slice(2);
+    if (hasPush4(hex, "d505accf") || hasPush4(hex, "9fd5a6cf")) flags |= FLAGS.EIP2612_SELECTOR_IN_CODE;
+    if (hasPush4(hex, "8fcbaf0c")) flags |= FLAGS.DAI_PERMIT_SELECTOR_IN_CODE;
+    if (hasPush4(hex, "e3ee160e") || hasPush4(hex, "cf092995") || hasPush4(hex, "ef55bec6")) flags |= FLAGS.EIP3009_SELECTOR_IN_CODE;
     const [ds, nn, ed] = await Promise.all([
       ok(client.readContract({ address: token, abi: probeAbi, functionName: "DOMAIN_SEPARATOR" })),
       ok(client.readContract({ address: token, abi: probeAbi, functionName: "nonces", args: [account] })),

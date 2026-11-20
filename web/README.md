@@ -1,65 +1,31 @@
-# QoreChain viem + wagmi starter
+# Permit Exposure Check: web app
 
-A Vite + React dApp for the QoreChain EVM built on [wagmi](https://wagmi.sh)
-and [RainbowKit](https://rainbowkit.com), with the QoreX wallet
-(`@qorechain/qorex-rainbowkit`) and the chain definitions from
-`@qorechain/evm`.
-
-It connects a wallet, shows the latest block, the account's QOR balance and its
-EVM authorisation window, and sends a zero-value transaction to itself so you
-can see how the chain answers.
-
-## Run
+Vite + React + wagmi, scaffolded with `npx create-qorechain-dapp --template viem-wagmi` (QoreChain's official starter), then built into the Permit Exposure Check UI.
 
 ```sh
-pnpm install
-pnpm dev        # http://localhost:5173
-pnpm build      # type-check and build for production
+npm install
+npm run dev      # http://localhost:5173
+npm run build    # type-check and production build
 ```
 
-The EVM window panel reads the chain's REST API, which sends no CORS headers, so
-the dev and preview servers forward `/lcd-testnet` and `/lcd-mainnet` to it
-(`vite.config.ts`). For production, serve the app behind a proxy that does the
-same.
+## What it does
+1. **Token:** scans a token in the browser and on chain through `PermitExposureRegistry.scan` (both must agree), then explains every signal:
+   - EIP-2612 / DAI-style / bytes-signature `permit`;
+   - EIP-3009 authorizations;
+   - `DOMAIN_SEPARATOR()`, which also catches permit tokens behind a proxy;
+   - `nonces` and `eip712Domain`.
+2. **Your account:** connects **QoreX through its native provider** (`window.qorex.native`) and reads the account's ML-DSA-87 status from the `pqcKeyStatus` precompile.
+3. **Record:** QoreX hybrid-signs (secp256k1 + ML-DSA-87) one native transaction: 1 uqor to the journal account, with the verdict in the memo.
+   - Recorded checks are read back with a REST tx search.
+   - Each is **re-verified**: the token is rescanned on chain and compared with the memo, since memos are self-reported.
 
-## Networks
+## Configuration (`.env`, all optional)
+| Variable | Default |
+|---|---|
+| `VITE_REGISTRY_ADDRESS` | the deployed registry on qorechain-diana |
+| `VITE_DEMO_PERMIT_TOKEN` | the deployed demo EIP-2612 token |
+| `VITE_JOURNAL` | `qor1ps3f779d94jvu6um0f9pdx465lfp24dkygpd8r` (fixed journal account) |
 
-`src/wagmi.ts` lists both QoreChain EVM chains, testnet first:
+The public REST endpoint sends no CORS headers, so the dev and preview servers proxy `/lcd-testnet` to `https://api-testnet.qore.host` (`vite.config.ts`). A production host needs the same proxy.
 
-| Chain | Id | RPC |
-| --- | --- | --- |
-| `qorechainTestnet` | 9800 | `https://evm-testnet.qore.host` |
-| `qorechain` | 9801 | `https://evm.qore.host` |
-
-## Wallets
-
-- **QoreX** (`qorexWallet`): found through EIP-6963. It answers
-  `eth_chainId`, `eth_accounts`, `eth_requestAccounts` and
-  `wallet_switchEthereumChain` today; its EVM signing methods are not
-  available yet, so use it to connect and read.
-- **Injected** (`injectedWallet`): any browser wallet that exposes an EIP-1193
-  provider, for signing.
-
-Neither uses WalletConnect. To add a WalletConnect-based wallet, set
-`VITE_WALLETCONNECT_PROJECT_ID` in `.env`.
-
-## Sending: the EVM authorisation window
-
-QoreChain admits an EVM transaction only when the sender has a registered
-**ML-DSA-87** key and a live **EVM authorisation window**. Both are set up on
-QoreChain's native lane with the post-quantum key, so a browser wallet's
-secp256k1 key can never authorise spending on its own.
-
-The app reads the window with `evmWindowStatus` from `@qorechain/evm`. When a
-send is refused, `classifyEvmWindowRejection(error)` tells you why:
-
-| Result | Meaning |
-| --- | --- |
-| `no-pqc-key` | the account has no ML-DSA-87 key registered |
-| `no-window` | no window is open |
-| `exhausted` | the window ran out of blocks, transactions or value |
-| `invalid` | the window parameters were refused |
-
-Open the window from a wallet or tool that holds the account's post-quantum
-key (for example the `pnpm window open` helper in the `foundry` and `hardhat`
-templates), then send. Opening a window advances the account's nonce.
+Why not QoreX's EVM provider? It answers account and network queries only; it cannot sign EVM transactions yet (QoreX docs). It also exposes an Ethereum-style account, not the user's registered native one. The advanced "record through the EVM registry" path is kept for MetaMask users with an open EVM window.

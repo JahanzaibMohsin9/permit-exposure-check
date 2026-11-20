@@ -4,13 +4,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { isAddress, zeroAddress, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { connectQorex, evmToQor, qorexNative, readJournal, recordWithQorex } from "./qorex.js";
-import { FLAGS, has, isExposed, registryAbi, scanInBrowser } from "./scan.js";
+import { connectQorex, qorexNative, readJournal, recordWithQorex } from "./qorex.js";
+import { FLAGS, TOKEN_MASK, has, isExposed, registryAbi, scanInBrowser } from "./scan.js";
 
 // Defaults: the instances deployed on qorechain-diana (override in .env).
-const REGISTRY = (import.meta.env.VITE_REGISTRY_ADDRESS || "0x0C229f78AD2d64CE6b9b7A4a169abaa7D21555b6") as Address | undefined;
+const REGISTRY = (import.meta.env.VITE_REGISTRY_ADDRESS || "0xeAFB19853fd1bD966aB43e54777331FD03D7fd49") as Address | undefined;
 const DEMO_PERMIT_TOKEN = (import.meta.env.VITE_DEMO_PERMIT_TOKEN || "0x47bad2BD1B77d02a88B2751D6629cAaD55C0eF72") as Address | undefined;
-const JOURNAL = REGISTRY ? evmToQor(REGISTRY) : undefined; // the registry contract's native account receives the records
+// Records go to a fixed journal account (the first registry's native account), independent of redeploys.
+const JOURNAL = (import.meta.env.VITE_JOURNAL || "qor1ps3f779d94jvu6um0f9pdx465lfp24dkygpd8r") as string;
 const REST = "/lcd-testnet"; // Vite proxy to https://api-testnet.qore.host (no CORS on the public endpoint)
 const EXPLORER_TX = "https://explore.qore.network/tx/";
 
@@ -59,6 +60,7 @@ function Verdict({ flags }: { flags: number }) {
         <Row bad={has(flags, FLAGS.EIP2612_SELECTOR_IN_CODE)} ok={!has(flags, FLAGS.EIP2612_SELECTOR_IN_CODE)} label="EIP-2612 permit in code" note="permit(owner, spender, value, deadline, v, r, s)" />
         <Row bad={has(flags, FLAGS.DAI_PERMIT_SELECTOR_IN_CODE)} ok={!has(flags, FLAGS.DAI_PERMIT_SELECTOR_IN_CODE)} label="DAI-style permit in code" note="permit(holder, spender, nonce, expiry, allowed, v, r, s)" />
         <Row bad={has(flags, FLAGS.DOMAIN_SEPARATOR_CALLABLE)} ok={!has(flags, FLAGS.DOMAIN_SEPARATOR_CALLABLE)} label="DOMAIN_SEPARATOR() answers" note="also catches permit tokens behind a proxy" />
+        <Row bad={has(flags, FLAGS.EIP3009_SELECTOR_IN_CODE)} ok={!has(flags, FLAGS.EIP3009_SELECTOR_IN_CODE)} label="EIP-3009 authorizations in code" note="transferWithAuthorization / receiveWithAuthorization (USDC-style)" />
         <Row label="nonces(address) answers" note={has(flags, FLAGS.NONCES_CALLABLE) ? "yes" : "no"} />
         <Row label="eip712Domain() answers" note={has(flags, FLAGS.EIP712_DOMAIN_CALLABLE) ? "yes (ERC-5267)" : "no"} />
       </ul>
@@ -131,6 +133,23 @@ export function App() {
     refetchInterval: 8000,
   });
   const flags = onChain.data !== undefined ? Number(onChain.data) : scan.data;
+  // Journal memos are self-reported: re-scan each token on chain and compare the token bits.
+  const verified = useQuery({
+    queryKey: ["journal-verify", journal.data?.map((e) => e.txHash).join(",")],
+    enabled: !!REGISTRY && !!journal.data?.length,
+    queryFn: async () => {
+      const out: Record<string, boolean> = {};
+      for (const e of journal.data ?? []) {
+        try {
+          const now = Number(await client!.readContract({ address: REGISTRY!, abi: registryAbi, functionName: "scan", args: [e.token as Address, zeroAddress] }));
+          out[e.txHash] = (now & TOKEN_MASK) === (e.flags & TOKEN_MASK);
+        } catch {
+          /* leave unverified */
+        }
+      }
+      return out;
+    },
+  });
 
   async function onConnect() {
     setConnectError(undefined);
@@ -241,8 +260,10 @@ export function App() {
             <ul className="entries">
               {(journal.data ?? []).map((c) => (
                 <li key={c.txHash}>
-                  <span className={c.exposed ? "pill bad" : "pill ok"}>{c.exposed ? "exposed" : "safe"}</span> <code>{short(c.token)}</code>{" "}
-                  checked by <code>{short(c.from)}</code> ·{" "}
+                  <span className={isExposed(c.flags) ? "pill bad" : "pill ok"}>{isExposed(c.flags) ? "exposed" : "safe"}</span> <code>{short(c.token)}</code>{" "}
+                  self-reported by <code>{short(c.from)}</code>{" "}
+                  {verified.data?.[c.txHash] === true && <span className="pill ok">matches on-chain scan</span>}
+                  {verified.data?.[c.txHash] === false && <span className="pill bad">differs from on-chain scan</span>} ·{" "}
                   <a href={`${EXPLORER_TX}${c.txHash}`} target="_blank" rel="noreferrer">
                     {new Date(c.time).toUTCString()}
                   </a>

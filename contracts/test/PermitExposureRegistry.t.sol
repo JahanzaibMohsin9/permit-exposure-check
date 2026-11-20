@@ -20,6 +20,17 @@ contract DaiStyleToken {
     function permit(address, address, uint256, uint256, bool, uint8, bytes32, bytes32) external pure {}
 }
 
+/// USDC-style EIP-3009: a leaked ECDSA key can move funds with a signature alone.
+contract Eip3009Token {
+    function transferWithAuthorization(address, address, uint256, uint256, uint256, bytes32, uint8, bytes32, bytes32) external pure {}
+    function receiveWithAuthorization(address, address, uint256, uint256, uint256, bytes32, uint8, bytes32, bytes32) external pure {}
+}
+
+/// permit(owner, spender, value, deadline, bytes signature): the bytes-signature permit variant.
+contract BytesPermitToken {
+    function permit(address, address, uint256, uint256, bytes calldata) external pure {}
+}
+
 contract PermitExposureRegistryTest is Test {
     address constant PQC_KEY_STATUS = 0x0000000000000000000000000000000000000a02;
     PermitExposureRegistry reg;
@@ -62,6 +73,24 @@ contract PermitExposureRegistryTest is Test {
         uint16 f = reg.scan(address(new DaiStyleToken()), user);
         assertTrue(_has(f, reg.DAI_PERMIT_SELECTOR_IN_CODE()));
         assertTrue(reg.isExposed(f));
+    }
+
+    /// Review finding PEC-1: USDC-style EIP-3009 tokens are exposed and must not read "not exposed".
+    function test_eip3009TokenIsExposed() public {
+        uint16 f = reg.scan(address(new Eip3009Token()), user);
+        assertTrue(_has(f, reg.EIP3009_SELECTOR_IN_CODE()));
+        assertTrue(reg.isExposed(f));
+    }
+
+    function test_bytesSignaturePermitIsExposed() public {
+        uint16 f = reg.scan(address(new BytesPermitToken()), user);
+        assertTrue(_has(f, reg.EIP2612_SELECTOR_IN_CODE()));
+        assertTrue(reg.isExposed(f));
+    }
+
+    function test_tokenAndAccountMasksSplitTheFlags() public view {
+        assertEq(reg.TOKEN_MASK() & reg.ACCOUNT_MASK(), 0);
+        assertEq(reg.TOKEN_MASK() | reg.ACCOUNT_MASK(), 0x03FF);
     }
 
     function test_addressWithoutCode() public {
