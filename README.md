@@ -1,6 +1,8 @@
 # Permit Exposure Check
 
 > Build Before Q-Day · Quantum Pass
+>
+> **Demo video (1:59):** https://youtu.be/675KeQN44kE
 
 **QoreChain's EVM windows protect transactions, not signatures.**
 A leaked secp256k1 key can't send an EVM transaction on QoreChain, because that needs the owner's ML-DSA-87 key and an open window. But many ERC-20s accept **ECDSA-signed approvals or transfers**: EIP-2612 `permit`, DAI-style `permit`, and USDC-style EIP-3009 `transferWithAuthorization`. Anyone can relay these, so a leaked key can still move funds without the owner sending a transaction.
