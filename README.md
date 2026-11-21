@@ -1,5 +1,7 @@
 # Permit Exposure Check
 
+[![Built on QoreChain](https://build.qorechain.io/badge/permit-exposure-check.svg)](https://build.qorechain.io/p/permit-exposure-check)
+
 > Build Before Q-Day · Quantum Pass
 >
 > **Demo video (1:59):** https://youtu.be/675KeQN44kE
