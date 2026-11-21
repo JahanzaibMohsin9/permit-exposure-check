@@ -62,7 +62,7 @@ Live examples, scanned for a registered account:
   - a permit token behind a proxy, a plain ERC-20, an address with no code;
   - PQ key states, an inactive precompile;
   - recording, events, and the flag masks.
-- `forge test --match-path test/fork/LiveScan.t.sol --fork-url https://evm-testnet.qore.host`: live fUSD is not exposed and the live demo token is exposed. CI runs this too.
+- `forge test --match-path test/fork/LiveScan.t.sol --fork-url https://evm-testnet.qore.host`: live fUSD is not exposed and the live demo token is exposed. Without `--fork-url` it is reported as skipped. CI runs it as a required step.
 
 ## Run
 ```sh

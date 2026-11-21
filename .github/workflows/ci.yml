@@ -11,9 +11,14 @@ jobs:
       - run: forge test -vv
         working-directory: contracts
       - name: live testnet scan (fork)
-        run: forge test --match-path test/fork/LiveScan.t.sol --fork-url https://evm-testnet.qore.host -vv
+        # Required: fails if the live scan disagrees. Retries only cover public-RPC hiccups.
+        run: |
+          for i in 1 2 3; do
+            forge test --match-path test/fork/LiveScan.t.sol --fork-url https://evm-testnet.qore.host -vv && exit 0
+            echo "attempt $i failed, retrying"; sleep 20
+          done
+          exit 1
         working-directory: contracts
-        continue-on-error: true # depends on the public testnet RPC
   web:
     runs-on: ubuntu-latest
     steps:

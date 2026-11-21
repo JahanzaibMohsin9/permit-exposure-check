@@ -8,7 +8,8 @@ import {PermitExposureRegistry} from "../../src/PermitExposureRegistry.sol";
 /// Note: QoreChain's PQC precompiles do not exist in a local fork, so PQC flags read 0 here.
 contract LiveScanTest is Test {
     function test_scanLiveTokens() public {
-        if (block.chainid != 9800) return; // only meaningful on a qorechain-diana fork
+        // Only meaningful on a qorechain-diana fork: reported as SKIPPED (not passed) otherwise.
+        vm.skip(block.chainid != 9800);
         PermitExposureRegistry reg = new PermitExposureRegistry();
         address fUSD = 0x97143B771D34ddb9130b807b135Ae675A5a963CA;
         uint16 f = reg.scan(fUSD, address(this));
