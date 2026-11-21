@@ -38,6 +38,10 @@ Permit Exposure Check answers two questions, then records the answer with a post
 | 7 | 128 | *account:* algorithm is ML-DSA-87 | |
 | 8 | 256 | *account:* possession proven | |
 | 9 | 512 | EIP-3009 `transferWithAuthorization` / `receiveWithAuthorization` in code | **exposed** |
+| 10 | 1024 | *browser only:* token is a proxy (EIP-1967 implementation or beacon slot, EIP-1822, legacy OpenZeppelin, EIP-1167) | |
+| 11 | 2048 | *browser only:* the proxy's **implementation** has a permit or EIP-3009 selector | **exposed** |
+
+Bits 10 and 11 come only from the browser scan. A contract cannot read another contract's storage, so the on-chain registry can't follow a proxy. The app compares browser and registry on bits 0 to 9. A token with no signature path that still answers `nonces(address)` or `eip712Domain()` is shown as **possibly exposed**, not as safe.
 
 Live examples, scanned for a registered account:
 - **fUSD** gives `449` = token bits `1` (has code, nothing exposed) + account bits `448` (registered, ML-DSA-87, proven).
@@ -57,6 +61,7 @@ Live examples, scanned for a registered account:
 - Memo: `permit-check v1 token=0x97143b…63ca flags=449 exposed=false`.
 
 ## Tests
+- `cd web && npm test` (7 tests, offline): proxy following (ERC-1967, EIP-1167), the "possibly exposed" tier, every signature selector, and the standard proxy slots.
 - `forge test` (14 tests):
   - EIP-2612, the bytes-signature permit, DAI-style permit and EIP-3009 tokens;
   - a permit token behind a proxy, a plain ERC-20, an address with no code;
@@ -71,6 +76,8 @@ cd web && npm install && npm run dev   # http://localhost:5173
 ```
 
 ## Limits (heuristics, stated honestly)
+- **Proxies:** the browser resolves the implementation and scans it too (EIP-1967 implementation and beacon slots, EIP-1822, legacy OpenZeppelin, EIP-1167 minimal proxies). The on-chain registry can't, so for a proxy only the browser verdict covers the implementation. The second independent review found this case (a COMP-style permit token behind an ERC-1967 proxy, with no `DOMAIN_SEPARATOR`); `web/test/scan.test.ts` covers it.
+- Recorded checks are coloured by a **fresh on-chain scan**, never by the self-reported memo. A memo that disagrees is marked and ignored.
 - The byte scan looks for `PUSH4 <selector>`. Matching bytes inside push data or metadata can give a false positive, and dispatchers that don't use `PUSH4` (some Vyper builds) can be missed. `DOMAIN_SEPARATOR()` is the proxy-safe second signal. `DOMAIN_SEPARATOR` alone also flags tokens that only have `delegateBySig`, which is still an ECDSA-signature path.
 - Not covered: allowances granted to Permit2-style contracts, and ERC-2771 trusted forwarders.
 - A token can behave differently when the scanner calls it. Treat "not exposed" as "no known ECDSA approval path found".

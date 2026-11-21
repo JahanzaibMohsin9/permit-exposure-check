@@ -5,7 +5,7 @@ import { useState } from "react";
 import { isAddress, zeroAddress, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { connectQorex, qorexNative, readJournal, recordWithQorex } from "./qorex.js";
-import { FLAGS, TOKEN_MASK, has, isExposed, registryAbi, scanInBrowser } from "./scan.js";
+import { BROWSER_ONLY, FLAGS, REGISTRY_BITS, TOKEN_MASK, has, isExposed, isPossiblyExposed, registryAbi, scanDetailed } from "./scan.js";
 
 // Defaults: the instances deployed on qorechain-diana (override in .env).
 const REGISTRY = (import.meta.env.VITE_REGISTRY_ADDRESS || "0xeAFB19853fd1bD966aB43e54777331FD03D7fd49") as Address | undefined;
@@ -38,21 +38,29 @@ function Row({ ok, bad, label, note }: { ok?: boolean; bad?: boolean; label: str
   );
 }
 
-function Verdict({ flags }: { flags: number }) {
+function Verdict({ flags, implementation }: { flags: number; implementation?: string }) {
   if (!has(flags, FLAGS.HAS_CODE)) return <div className="verdict neutral">No contract at this address on qorechain-diana.</div>;
   const exposed = isExposed(flags);
+  const possibly = isPossiblyExposed(flags);
   return (
     <>
-      <div className={`verdict ${exposed ? "bad" : "ok"}`}>
+      <div className={`verdict ${exposed ? "bad" : possibly ? "warn" : "ok"}`}>
         {exposed ? (
           <>
             <b>Exposed.</b> This token accepts ECDSA-signed approvals. A leaked secp256k1 key can sign a <code>permit</code> that
             anyone relays, and QoreChain's EVM window does not stop it, because the owner sends no transaction.
           </>
+        ) : possibly ? (
+          <>
+            <b>Possibly exposed.</b> No <code>permit</code> selector was found, but the token answers <code>nonces(address)</code> or{" "}
+            <code>eip712Domain()</code>, which usually come with signed approvals. Check the token's source before relying on it.
+          </>
         ) : (
           <>
-            <b>Not exposed.</b> No ECDSA <code>permit</code> found. Approvals for this token need a transaction, which on QoreChain
-            needs your ML-DSA-87 key and an EVM window.
+            <b>No ECDSA approval path found.</b> No <code>permit</code> or <code>transferWithAuthorization</code> in the code
+            {implementation ? " or in the proxy's implementation" : ""}. Approvals for this token need a transaction, which on
+            QoreChain needs your ML-DSA-87 key and an EVM window. Allowances you already gave to signature-based spenders (such as
+            Permit2) are not covered by this check.
           </>
         )}
       </div>
@@ -61,6 +69,14 @@ function Verdict({ flags }: { flags: number }) {
         <Row bad={has(flags, FLAGS.DAI_PERMIT_SELECTOR_IN_CODE)} ok={!has(flags, FLAGS.DAI_PERMIT_SELECTOR_IN_CODE)} label="DAI-style permit in code" note="permit(holder, spender, nonce, expiry, allowed, v, r, s)" />
         <Row bad={has(flags, FLAGS.DOMAIN_SEPARATOR_CALLABLE)} ok={!has(flags, FLAGS.DOMAIN_SEPARATOR_CALLABLE)} label="DOMAIN_SEPARATOR() answers" note="also catches permit tokens behind a proxy" />
         <Row bad={has(flags, FLAGS.EIP3009_SELECTOR_IN_CODE)} ok={!has(flags, FLAGS.EIP3009_SELECTOR_IN_CODE)} label="EIP-3009 authorizations in code" note="transferWithAuthorization / receiveWithAuthorization (USDC-style)" />
+        {has(flags, FLAGS.PROXY_DETECTED) && (
+          <Row
+            bad={has(flags, FLAGS.IMPL_SIGNATURE_PATH)}
+            ok={!has(flags, FLAGS.IMPL_SIGNATURE_PATH)}
+            label="Proxy: implementation scanned"
+            note={`${implementation ? short(implementation) : "implementation"}: ${has(flags, FLAGS.IMPL_SIGNATURE_PATH) ? "permit / EIP-3009 found" : "none found"} (browser only; the registry can't follow proxies on chain)`}
+          />
+        )}
         <Row label="nonces(address) answers" note={has(flags, FLAGS.NONCES_CALLABLE) ? "yes" : "no"} />
         <Row label="eip712Domain() answers" note={has(flags, FLAGS.EIP712_DOMAIN_CALLABLE) ? "yes (ERC-5267)" : "no"} />
       </ul>
@@ -116,7 +132,7 @@ export function App() {
   const who = qorex?.evm ?? evm.address ?? zeroAddress;
   const scan = useQuery({
     queryKey: ["scan", token, who],
-    queryFn: () => scanInBrowser(client!, token!, who),
+    queryFn: () => scanDetailed(client!, token!, who),
     enabled: !!client && !!token,
   });
   const onChain = useReadContract({
@@ -132,17 +148,20 @@ export function App() {
     enabled: !!JOURNAL,
     refetchInterval: 8000,
   });
-  const flags = onChain.data !== undefined ? Number(onChain.data) : scan.data;
+  // On-chain registry bits when available, plus the browser-only proxy bits (the registry can't follow proxies).
+  const browserFlags = scan.data?.flags;
+  const flags =
+    onChain.data !== undefined ? (Number(onChain.data) & REGISTRY_BITS) | ((browserFlags ?? 0) & BROWSER_ONLY) : browserFlags;
   // Journal memos are self-reported: re-scan each token on chain and compare the token bits.
   const verified = useQuery({
     queryKey: ["journal-verify", journal.data?.map((e) => e.txHash).join(",")],
     enabled: !!REGISTRY && !!journal.data?.length,
     queryFn: async () => {
-      const out: Record<string, boolean> = {};
+      const out: Record<string, number> = {};
       for (const e of journal.data ?? []) {
         try {
           const now = Number(await client!.readContract({ address: REGISTRY!, abi: registryAbi, functionName: "scan", args: [e.token as Address, zeroAddress] }));
-          out[e.txHash] = (now & TOKEN_MASK) === (e.flags & TOKEN_MASK);
+          out[e.txHash] = now; // the fresh on-chain scan decides the colour, never the self-reported memo
         } catch {
           /* leave unverified */
         }
@@ -201,10 +220,11 @@ export function App() {
         {!token && <p className="small">Enter a 0x address.</p>}
         {token && flags === undefined && <p className="small">Scanning…</p>}
         {scan.error && <div className="error">Scan failed: {scan.error.message}</div>}
-        {token && flags !== undefined && <Verdict flags={flags} />}
+        {token && flags !== undefined && <Verdict flags={flags} implementation={scan.data?.implementation} />}
         {REGISTRY && onChain.data !== undefined && scan.data !== undefined && (
           <p className="small">
-            On-chain scan by the registry {Number(onChain.data) === scan.data ? "matches" : "differs from"} the in-browser scan.
+            On-chain scan by the registry {(Number(onChain.data) & REGISTRY_BITS) === (scan.data.flags & REGISTRY_BITS) ? "matches" : "differs from"} the
+            in-browser scan.
           </p>
         )}
       </section>
@@ -258,17 +278,24 @@ export function App() {
             <h3>Recorded checks</h3>
             {journal.error && <p className="small">Could not read records: {journal.error.message}</p>}
             <ul className="entries">
-              {(journal.data ?? []).map((c) => (
+              {(journal.data ?? []).map((c) => {
+                const now = verified.data?.[c.txHash];
+                const matches = now !== undefined && (now & TOKEN_MASK) === (c.flags & TOKEN_MASK);
+                const shown = now ?? c.flags; // colour from the fresh on-chain scan; the memo is only a claim
+                return (
                 <li key={c.txHash}>
-                  <span className={isExposed(c.flags) ? "pill bad" : "pill ok"}>{isExposed(c.flags) ? "exposed" : "safe"}</span> <code>{short(c.token)}</code>{" "}
-                  self-reported by <code>{short(c.from)}</code>{" "}
-                  {verified.data?.[c.txHash] === true && <span className="pill ok">matches on-chain scan</span>}
-                  {verified.data?.[c.txHash] === false && <span className="pill bad">differs from on-chain scan</span>} ·{" "}
+                  <span className={now === undefined ? "pill neutral" : isExposed(shown) ? "pill bad" : "pill ok"}>
+                    {now === undefined ? "checking…" : isExposed(shown) ? "exposed" : "no permit path"}
+                  </span>{" "}
+                  <code>{short(c.token)}</code> recorded by <code>{short(c.from)}</code>{" "}
+                  {now !== undefined && matches && <span className="pill ok">matches on-chain scan</span>}
+                  {now !== undefined && !matches && <span className="pill neutral">memo differs from on-chain scan (ignored)</span>} ·{" "}
                   <a href={`${EXPLORER_TX}${c.txHash}`} target="_blank" rel="noreferrer">
                     {new Date(c.time).toUTCString()}
                   </a>
                 </li>
-              ))}
+                );
+              })}
               {journal.data?.length === 0 && <li className="small">No records yet. Be the first.</li>}
             </ul>
           </>

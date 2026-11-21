@@ -28,6 +28,7 @@ button.ghost { background: transparent; color: var(--accent); border: 1px solid 
 .verdict.ok { background: rgba(60, 207, 145, 0.1); border: 1px solid rgba(60, 207, 145, 0.4); }
 .verdict.bad { background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.4); }
 .verdict.neutral { background: #0f131c; border: 1px solid var(--border); }
+.verdict.warn { background: rgba(245, 185, 66, 0.1); border: 1px solid rgba(245, 185, 66, 0.45); }
 .checks { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
 .checks li { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 8px 10px; border-radius: 8px; background: #0f131c; }
 .checks li::before { content: "•"; color: var(--muted); }
