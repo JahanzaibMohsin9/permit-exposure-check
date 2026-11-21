@@ -29,3 +29,8 @@ npm run build    # type-check and production build
 The public REST endpoint sends no CORS headers, so the dev and preview servers proxy `/lcd-testnet` to `https://api-testnet.qore.host` (`vite.config.ts`). A production host needs the same proxy.
 
 Why not QoreX's EVM provider? It answers account and network queries only; it cannot sign EVM transactions yet (QoreX docs). It also exposes an Ethereum-style account, not the user's registered native one. The advanced "record through the EVM registry" path is kept for MetaMask users with an open EVM window.
+
+## Hosting (Vercel)
+The public REST endpoint sends no CORS headers, so the app reaches it through `/lcd-testnet`. In development and `vite preview`, Vite proxies it (`vite.config.ts`). On Vercel, `vercel.json` rewrites `/lcd-testnet/*` to `https://api-testnet.qore.host/*`. The EVM JSON-RPC allows CORS and is called directly.
+
+Import the repo on vercel.com, set **Root Directory** to `web`, and deploy. Framework, build command and output directory come from `vercel.json`. No environment variables are needed; the deployed testnet addresses are the defaults in `src/App.tsx`.
