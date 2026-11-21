@@ -47,7 +47,7 @@ Live examples, scanned for a registered account:
 | Journal account (receives the 1 uqor records) | `qor1ps3f779d94jvu6um0f9pdx465lfp24dkygpd8r` |
 
 **Proof of a user's hybrid-signed record:**
-- Transaction `D06E179BD5AAD18A4B3FC3A73DD81C7E4D29379509F865EB81FE18C5457CAE30` (block 10454464).
+- Transaction [`D06E179BD5AAD18A4B3FC3A73DD81C7E4D29379509F865EB81FE18C5457CAE30`](https://explore.qore.network/tx/D06E179BD5AAD18A4B3FC3A73DD81C7E4D29379509F865EB81FE18C5457CAE30) (block 10454464). The explorer opens on mainnet: click **Testnet** in its top bar first.
 - Approved in QoreX by `qor177jch6w6r59zqph9spz7g5vajeqy5cfqpmpvkq`.
 - It carries a `/qorechain.pqc.v1.PQCHybridSignature` extension with a 4,627-byte ML-DSA-87 signature, alongside the secp256k1 signature.
 - Memo: `permit-check v1 token=0x97143b…63ca flags=449 exposed=false`.
