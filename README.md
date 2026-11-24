@@ -75,7 +75,13 @@ Live examples, scanned for a registered account:
 ```sh
 cd contracts && forge test
 cd web && npm install && npm run dev   # http://localhost:5173
+npm run cbom                           # QoreScan CBOM -> docs/cbom.json
 ```
+
+## Cryptographic inventory (QoreScan CBOM)
+[`docs/cbom.json`](docs/cbom.json) is a CycloneDX 1.6 CBOM written by QoreScan Community (`@qorechain/qorescan`; `cd web && npm run cbom`). It scans `contracts/src` and reads live testnet state: the active precompiles and the keys of the QoreX account, the deployer and the journal account. It records ML-DSA-87 where the registry calls `pqcKeyStatus` (`PermitExposureRegistry.sol`), and the classical algorithms that remain (secp256k1 ECDSA, Keccak-256, Ed25519 validator keys).
+
+The two tools are complementary. QoreScan inventories **source code and accounts**. Permit Exposure Check reads a token's **deployed bytecode** for ECDSA approval paths: it flags the live demo token, while the CBOM of `contracts/src` has no ECDSA occurrence for it, because the `ecrecover` sits in OpenZeppelin's `ERC20Permit`/`ECDSA` under `contracts/lib`. Pointing QoreScan at that library does find secp256k1 ECDSA, but a source scan can't tell which deployed token uses it, or whether a token reached through a proxy does.
 
 ## Limits (heuristics, stated honestly)
 - **Proxies:** the browser resolves the implementation and scans it too (EIP-1967 implementation and beacon slots, EIP-1822, legacy OpenZeppelin, EIP-1167 minimal proxies). The on-chain registry can't, so for a proxy only the browser verdict covers the implementation. The second independent review found this case (a COMP-style permit token behind an ERC-1967 proxy, with no `DOMAIN_SEPARATOR`); `web/test/scan.test.ts` covers it.
@@ -86,7 +92,7 @@ cd web && npm install && npm run dev   # http://localhost:5173
 
 ## Credits
 - Scaffolded with `create-qorechain-dapp` (viem-wagmi template).
-- Uses `@qorechain/evm` and `@qorechain/qorex-rainbowkit`.
+- Uses `@qorechain/evm`, `@qorechain/qorex-rainbowkit` and `@qorechain/qorescan` (QoreScan Community, for the CBOM).
 - OpenZeppelin Contracts v5.4.0 and forge-std.
 
 MIT licence.

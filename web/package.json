@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/scan.test.ts"
+    "test": "node --import tsx --test test/scan.test.ts",
+    "cbom": "qorescan scan --name \"Permit Exposure Check\" --network testnet --solidity ../contracts/src --address qor177jch6w6r59zqph9spz7g5vajeqy5cfqpmpvkq --address qor1r4c4vwg56wxjtveevtkr9k5lhrml9ykf6a2dqx --address qor1ps3f779d94jvu6um0f9pdx465lfp24dkygpd8r --out ../docs/cbom.json"
   },
   "dependencies": {
     "@qorechain/evm": "^0.14.0",
@@ -23,6 +24,7 @@
     "wagmi": "^2.19.5"
   },
   "devDependencies": {
+    "@qorechain/qorescan": "^0.1.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
